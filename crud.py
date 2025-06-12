@@ -98,8 +98,8 @@ class User(Resource):
         db.session.delete(user)
         db.session.commit()
         return {'message': 'User deleted'}, 200
-
-class UserSearch(Resource):
+    
+class user_search(Resource):
     def get(self):
         name = request.args.get('name')
         email = request.args.get('email')
@@ -123,7 +123,7 @@ class UserSearch(Resource):
     
 api.add_resource(Users, '/api/users/')
 api.add_resource(User, '/api/users/<int:id>')
-api.add_resource(UserSearch, '/api/users/search')
+api.add_resource(user_search,'/api/users/keyword')
 
 @app.route('/')
 def home():
