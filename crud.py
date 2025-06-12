@@ -99,8 +99,31 @@ class User(Resource):
         db.session.commit()
         return {'message': 'User deleted'}, 200
 
+class UserSearch(Resource):
+    def get(self):
+        name = request.args.get('name')
+        email = request.args.get('email')
+        phone = request.args.get('phone')
+
+        query = UserModel.query
+
+        if name:
+            query = query.filter(UserModel.name.ilike(f"%{name}%"))
+        if email:
+            query = query.filter(UserModel.email.ilike(f"%{email}%"))
+        if phone:
+            query = query.filter(UserModel.phone.like(f"%{phone}%"))
+
+        users = query.all()
+
+        if not users:
+            return {'message': 'No matching users found'}, 404
+
+        return users_schema.dump(users), 200
+    
 api.add_resource(Users, '/api/users/')
 api.add_resource(User, '/api/users/<int:id>')
+api.add_resource(UserSearch, '/api/users/search')
 
 @app.route('/')
 def home():
