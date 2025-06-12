@@ -5,8 +5,9 @@ from flask_restful import Resource, Api, abort
 import bcrypt
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:root@localhost/db_usermodel'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
 api = Api(app)
@@ -15,8 +16,8 @@ class UserModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(80), unique=True, nullable=False)
-    phone = db.Column(db.Integer, unique=True)
-    password = db.Column(db.String(80), nullable=False)
+    phone = db.Column(db.BigInteger, unique=True)
+    password = db.Column(db.String(128), nullable=False)
     status = db.Column(db.Boolean, default=True)
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
@@ -98,15 +99,14 @@ class User(Resource):
         db.session.delete(user)
         db.session.commit()
         return {'message': 'User deleted'}, 200
-    
-class user_search(Resource):
+
+class UserSearch(Resource):
     def get(self):
         name = request.args.get('name')
         email = request.args.get('email')
         phone = request.args.get('phone')
 
         query = UserModel.query
-
         if name:
             query = query.filter(UserModel.name.ilike(f"%{name}%"))
         if email:
@@ -120,14 +120,16 @@ class user_search(Resource):
             return {'message': 'No matching users found'}, 404
 
         return users_schema.dump(users), 200
-    
+
 api.add_resource(Users, '/api/users/')
 api.add_resource(User, '/api/users/<int:id>')
-api.add_resource(user_search,'/api/users/keyword')
+api.add_resource(UserSearch, '/api/users/search')
 
 @app.route('/')
 def home():
     return '<h1>Flask RestAPI</h1>'
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
