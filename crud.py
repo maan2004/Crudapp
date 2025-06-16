@@ -2,6 +2,7 @@ from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from flask_restful import Resource, Api, abort
+from marshmallow import fields, validate, validates_schema, ValidationError
 import bcrypt
 
 app = Flask(__name__)
@@ -25,7 +26,17 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         model = UserModel
         load_instance = True
 
-    password = ma.String(load_only=True, required=True)
+    name = fields.String(required=True,validate=validate.Length(min=2))
+    email = fields.Email(required=True, validate=validate.Email(error="Invalid email format."))
+    phone = fields.String(validate=validate.Regexp(r"^\+?[1-9]\d{1,13}$", error="Invalid phone number."))
+    password = fields.String(required=True, load_only=True)
+
+    @validates_schema
+    def validate_unique_fields(self, data, **kwargs):
+        if 'email' in data and UserModel.query.filter_by(email=data['email']).first():
+            raise ValidationError("Email already exists.", field_name="email")
+        if 'phone' in data and UserModel.query.filter_by(phone=data['phone']).first():
+            raise ValidationError("Phone already exists.", field_name="phone")
 
 user_schema = UserSchema()
 users_schema = UserSchema(many=True)
@@ -45,21 +56,15 @@ class Users(Resource):
 
         try:
             user_data = user_schema.load(json_data)
-        except Exception as e:
-            return {'error': str(e)}, 422
-
-        if UserModel.query.filter_by(email=user_data.email).first():
-            abort(409, message="Email already exists")
-        
-        if user_data.phone and UserModel.query.filter_by(phone=user_data.phone).first():
-            abort(409, message="Phone already exists")
+        except ValidationError as err:
+            return {"errors": err.messages}, 422
 
         user_data.password = hash_password(user_data.password)
-
         db.session.add(user_data)
         db.session.commit()
         return user_schema.dump(user_data), 201
-    
+
+class UserSearch(Resource):
     def get(self):
         keyword = request.args.get('keyword')
         if not keyword:
@@ -67,8 +72,8 @@ class Users(Resource):
 
         users = UserModel.query.filter(
             (UserModel.name.ilike(f"%{keyword}%")) |
-            (UserModel.email.ilike(f"%{keyword}%") |
-            (UserModel.phone.ilike(f"%{keyword}%")))
+            (UserModel.email.ilike(f"%{keyword}%")) |
+            (UserModel.phone.ilike(f"%{keyword}%"))
         ).all()
 
         return users_schema.dump(users), 200
@@ -89,12 +94,18 @@ class User(Resource):
         if not json_data:
             abort(400, message="No input data provided")
 
+        if 'email' in json_data and json_data['email'] != user.email:
+            if UserModel.query.filter_by(email=json_data['email']).first():
+                abort(400, message="Email already exists")
+            user.email = json_data['email']
+
+        if 'phone' in json_data and json_data['phone'] != user.phone:
+            if UserModel.query.filter_by(phone=json_data['phone']).first():
+                abort(400, message="Phone already exists")
+            user.phone = json_data['phone']
+
         if 'name' in json_data:
             user.name = json_data['name']
-        if 'email' in json_data:
-            user.email = json_data['email']
-        if 'phone' in json_data:
-            user.phone = json_data['phone']
         if 'status' in json_data:
             user.status = json_data['status']
         if 'password' in json_data:
@@ -107,12 +118,12 @@ class User(Resource):
         user = UserModel.query.get(id)
         if not user:
             abort(404, message="User not found")
-
         db.session.delete(user)
         db.session.commit()
         return {'message': 'User deleted'}, 200
 
 api.add_resource(Users, '/api/users/')
+api.add_resource(UserSearch, '/api/usersearch/')
 api.add_resource(User, '/api/users/<int:id>')
 
 @app.route('/')
